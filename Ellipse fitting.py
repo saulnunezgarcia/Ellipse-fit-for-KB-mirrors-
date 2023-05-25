@@ -3,10 +3,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 from ellipse import LsqEllipse
+from sklearn.metrics import mean_squared_error, r2_score
+
+#Functions to process the data
 
 def removecomas(df1):
     #To convert numbers like 6,3124 to 6.3124
-    for i in range(len(df1.values)):
+    for i in range(df1.shape[0]):
         for j in range(df1.shape[1]):
             df1.values[i][j] = float(df1.values[i][j].replace(',','.'))
     return df1
@@ -27,13 +30,16 @@ def datatonumeric(dataframe,x_min,x_max):
     y = np.array([float(i) for i in df1.values])
     return df1.rename(columns = {'01DIST1 [mm]':'M1'}),x,y
 
+#Functions for the fit
+
 def elipse(x,y):
     #Returns the coefficients of the ellipse fitting, the parameters and the object model
     X = np.array(list(zip(x, y)))
     obj = LsqEllipse()
     obj.fit(X)
     #obj.as_parameters() gives the center, width, height, phi of the ellipse
-    return obj.coefficients, obj.as_parameters(),obj
+    #obj.coefficients gives the coefficients A,B,C,D,E,F in the form Ax**2 + Bxy + Cy**2 + Dx + Ey + F
+    return obj,obj.coefficients, obj.as_parameters()
 
 def ellipseplot(x,y,parameters):
     #Returns the plot of the mirror with the fitting of the elipse
@@ -53,13 +59,31 @@ def ellipseplot(x,y,parameters):
     plt.show()
     return
 
+def predicciones(x,y):
+    #To get a dataframe with the predictions made by the model
+    object_ellipse,_,_ = elipse(x,y)
+    predictions_filtered = np.array([None])
+    t = 10000
+    while predictions_filtered.shape[0] != y.shape[0]:
+        t+=1
+        predictions = pd.DataFrame(object_ellipse.return_fit(n_points=t),columns = ['x','y'])
+        predictions_filtered = predictions.loc[predictions['y']>=min(y)]
+    predictions_filtered = predictions_filtered.sort_values(by = 'x').reset_index().drop('index',axis = 1)
+    return predictions_filtered, print('The MSE is {:.5f}'.format(mean_squared_error(y,predictions_filtered['y']))), print('The r^2 value is {:.5f}'.format(r2_score(y,predictions_filtered['y'])))
+
 
 #Here we charge the data from an excel datasheet, then we plot the profile of the mirror and later we plot the
 #fitting of the mirror with an ellipse
 df,x,y = datatonumeric('b15.csv',0,80)
-print(df)
+x = x*10**-1 #to convert to cm
+y = y*10**-1 #to convert to cm
+
+A,B,C,D,E,F = elipse(x,y)[1] #To get the equation of the ellipse in the form Ax**2 + Bxz + Cz**2 + Dx + Ez + F = 0
+
 plt.plot(df)
 plt.xlabel('Length of the mirror')
 plt.ylabel('Depth')
-ellipseplot(x,y,elipse(x,y)[1])
+ellipseplot(x,y,elipse(x,y)[2])
 plt.show()
+print('The model for the ellipse is {:f} x^2 + {:f} xy + {:f} y^2 + {:f} x + {:f} y + {:f} = 0 \n'.format(A,B,C,D,E,F))
+print(predicciones(x,y)[1:2])
